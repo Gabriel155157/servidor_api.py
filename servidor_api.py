@@ -10,6 +10,7 @@ import time
 import os
 import sys
 import json
+import logging
 
 # --- CORREÇÃO DE CAMINHO ---
 if getattr(sys, 'frozen', False):
@@ -18,6 +19,11 @@ else:
     application_path = os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(__name__)
+
+# --- SILENCIADOR DE LOGS DO FLASK (Para não poluir o terminal) ---
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
+# -----------------------------------------------------------------
 
 # ==========================================
 # ⚙️ SUAS CREDENCIAIS E MEMÓRIA BLINDADA
@@ -28,7 +34,6 @@ SENHA_ESPORTIVA = "SUA_SENHA_AQUI"
 ARQUIVO_MEMORIA = os.path.join(application_path, "memoria_bacbo.json")
 historico_global = []
 
-# --- 1. CARREGA A MEMÓRIA DE ONDE PAROU ---
 def carregar_memoria():
     global historico_global
     if os.path.exists(ARQUIVO_MEMORIA):
@@ -39,7 +44,6 @@ def carregar_memoria():
         except:
             historico_global = []
 
-# --- 2. SALVA A MEMÓRIA PARA NUNCA PERDER ---
 def salvar_memoria():
     try:
         with open(ARQUIVO_MEMORIA, "w") as f:
@@ -48,13 +52,11 @@ def salvar_memoria():
 
 def atualizar_memoria(nova_leitura_invertida):
     global historico_global
-    
     if not historico_global:
         historico_global = nova_leitura_invertida
         salvar_memoria()
         return
 
-    # Usa os últimos 8 resultados como assinatura
     assinatura = historico_global[:8]
     novas_bolinhas = []
     achou_conexao = False
@@ -70,22 +72,18 @@ def atualizar_memoria(nova_leitura_invertida):
             historico_global = novas_bolinhas + historico_global
             salvar_memoria()
     else:
-        # Se a mesa mudar totalmente
         historico_global = nova_leitura_invertida
         salvar_memoria()
         
-    # Limita a 10.000 rodadas
     if len(historico_global) > 10000:
         historico_global = historico_global[:10000]
         salvar_memoria()
-
 
 def login_esportiva_bet(driver):
     print("\n" + "█"*40)
     print("🔐 LOGIN AUTOMÁTICO NA ESPORTIVA.BET (SERVIDOR API)")
     print("█"*40)
 
-    # Força tamanho Full HD para evitar bugs visuais do Headless
     driver.set_window_size(1920, 1080)
 
     arquivo_credenciais = os.path.join(application_path, "credenciais_esportiva.txt")
@@ -98,14 +96,13 @@ def login_esportiva_bet(driver):
             if len(linhas) >= 2:
                 usuario = linhas[0].strip()
                 senha = linhas[1].strip()
-        print("✅ Credenciais lidas do arquivo!")
+        print("✅ Credenciais lidas do arquivo automático!")
     
     if not usuario or not senha:
         usuario = USUARIO_ESPORTIVA
         senha = SENHA_ESPORTIVA
 
     print(f"A iniciar sessão na conta: {usuario}...")
-    
     driver.get("https://esportiva.bet.br/")
     
     try:
@@ -129,36 +126,31 @@ def login_esportiva_bet(driver):
                         except: pass
             return False
 
+        # Limpando pop-ups
         try:
             if forcar_clique("ACEITAR TODOS") or forcar_clique("ACEITAR"): pass
             time.sleep(1)
         except: pass
-
         try:
             if forcar_clique("ESCURO") or forcar_clique("CLARO") or forcar_clique("SALVAR"): pass
             time.sleep(1)
         except: pass
-
         try:
             btn_popup = driver.find_element(By.XPATH, '/html/body/div[2]/div/div[2]/span')
             if btn_popup.is_displayed(): btn_popup.click()
         except: pass
-
         try:
             forcar_clique("CONFIRMAR")
             time.sleep(1)
         except: pass
-
         try:
             forcar_clique("SIM")
             time.sleep(1)
         except: pass
-
         try:
             forcar_clique("SIM")
             time.sleep(1)
         except: pass
-
         try:
             abriu_login = forcar_clique("FAZER LOGIN")
             if not abriu_login:
@@ -167,10 +159,7 @@ def login_esportiva_bet(driver):
         except: pass
 
         print("🔑 A preencher credenciais...")
-        
-        input_user = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//input[@id='login' or @name='login' or @type='login']"))
-        )
+        input_user = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, "//input[@id='login' or @name='login' or @type='login']")))
         driver.execute_script("arguments[0].click();", input_user)
         input_user.clear()
         time.sleep(0.5)
@@ -181,9 +170,7 @@ def login_esportiva_bet(driver):
         driver.execute_script("arguments[0].blur();", input_user)
         time.sleep(1)
 
-        input_pass = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//input[@type='password' or @id='password' or @name='password']"))
-        )
+        input_pass = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, "//input[@type='password' or @id='password' or @name='password']")))
         driver.execute_script("arguments[0].click();", input_pass)
         input_pass.clear()
         time.sleep(0.5)
@@ -198,11 +185,10 @@ def login_esportiva_bet(driver):
             driver.execute_script("arguments[0].removeAttribute('disabled');", btn_entrar)
             time.sleep(0.5)
             driver.execute_script("arguments[0].click();", btn_entrar)
-        except Exception as err:
+        except:
             input_pass.send_keys(Keys.ENTER)
         
         print("⏳ Aguardando a plataforma confirmar a sessão...")
-        
         logado = False
         for i in range(15): 
             time.sleep(1)
@@ -231,18 +217,14 @@ def login_esportiva_bet(driver):
         raise Exception("Falha crítica no login.") 
 
 
-# ==========================================
-# MOTOR DE RASPAGEM 24H (ANTI-LOOP INFINITO)
-# ==========================================
 def motor_raspagem_24h():
     global historico_global
     print("🚀 Iniciando Motor de Captura 24H (Modo Servidor)...")
-    carregar_memoria() # <-- Traz de volta os dados antigos se o robô recomeçou
+    carregar_memoria() 
     
     while True:
         try:
             driver = Driver(uc=True, headless2=True)
-            
             login_esportiva_bet(driver)
             
             print("🎲 Entrando na mesa do Bac Bo...")
@@ -254,7 +236,6 @@ def motor_raspagem_24h():
             while True:
                 try:
                     driver.switch_to.default_content() 
-                    
                     try:
                         iframe_1 = driver.find_element(By.ID, "gameIframe")
                         driver.switch_to.frame(iframe_1)
@@ -267,8 +248,7 @@ def motor_raspagem_24h():
                     except Exception as e:
                         falhas_consecutivas += 1
                         time.sleep(3)
-                        if falhas_consecutivas > 10: 
-                            raise Exception("Iframes não carregaram.")
+                        if falhas_consecutivas > 10: raise Exception("Iframes não carregaram.")
                         continue
 
                     caixa_historico = driver.find_element(By.XPATH, '/html/body/div[4]/div/div/div[2]/div[6]/div/div[1]/div/div/div')
@@ -278,19 +258,16 @@ def motor_raspagem_24h():
                     var svgs = caixa.querySelectorAll('svg[data-type="roadItem"]');
                     var dados = [];
                     var achou_numero = false;
-                    
                     for(var i=0; i<svgs.length; i++){
                         var svg = svgs[i];
                         var textEl = svg.querySelector('text');
                         if(textEl) {
                             var txt = textEl.textContent.trim();
                             var num = parseInt(txt, 10);
-                            
                             if(!isNaN(num) && num >= 2 && num <= 12) {
                                 achou_numero = true;
                                 var cor = 'T';
                                 var nameAttr = svg.getAttribute('name');
-                                
                                 if (nameAttr) {
                                     var nome = nameAttr.toLowerCase();
                                     if (nome === 'player') cor = 'P';
@@ -317,28 +294,21 @@ def motor_raspagem_24h():
                     
                     resultado_js = driver.execute_script(script_extrator, caixa_historico)
                     
-                    # 🚨 DESTRUIDOR DE LOOP INFINITO 🚨
                     if not resultado_js['has_numbers']:
                         falhas_consecutivas += 1
-                        print(f"👁️ Painel liso detectado (Tentativa {falhas_consecutivas}/15). Dando clique...")
-                        
+                        print(f"👁️ Painel liso (Tentativa {falhas_consecutivas}/15). Dando clique...")
                         try:
-                            # Tenta o mouse físico real primeiro
                             actions = ActionChains(driver)
                             actions.move_to_element(caixa_historico).click().pause(0.5).click().perform()
                         except:
-                            # Tenta via código Javascript se o mouse físico falhar
                             try:
                                 driver.execute_script("var ev = new MouseEvent('click', {bubbles: true, cancelable: true, view: window}); arguments[0].dispatchEvent(ev);", caixa_historico)
                                 time.sleep(0.3)
                                 driver.execute_script("var ev = new MouseEvent('click', {bubbles: true, cancelable: true, view: window}); arguments[0].dispatchEvent(ev);", caixa_historico)
                             except: pass
-                            
-                        time.sleep(2) # Espera o painel virar
-                        
-                        # Se já tentou 15 vezes seguidas e o site ignorou o clique, ele reinicia o jogo
+                        time.sleep(2) 
                         if falhas_consecutivas >= 15:
-                            print("🔄 O painel travou permanentemente. Dando F5 na página para limpar os bugs...")
+                            print("🔄 O painel travou. Dando F5 na página...")
                             driver.refresh()
                             time.sleep(15)
                             falhas_consecutivas = 0
@@ -347,26 +317,21 @@ def motor_raspagem_24h():
                         dados_invertidos = dados_extraidos[::-1]
                         atualizar_memoria(dados_invertidos)
                         print(f"📡 API ONLINE: {len(historico_global)} rodadas salvas no banco!")
-                        falhas_consecutivas = 0 # Zerou as falhas porque deu certo
+                        falhas_consecutivas = 0 
                         
                 except Exception as e:
                     falhas_consecutivas += 1
                     if falhas_consecutivas > 20:
-                        print("❌ Erro crítico contínuo nos Iframes. Reiniciando todo o motor...")
-                        break # Volta pro login e começa do zero, mas com a memória intacta no arquivo JSON
-                        
+                        print("❌ Erro crítico contínuo nos Iframes. Reiniciando motor...")
+                        break 
                 time.sleep(1) 
 
         except Exception as e:
-            print("⚠️ Motor capotou. Reiniciando tudo em 10s...", e)
+            print("⚠️ Motor capotou. Reiniciando tudo em 10s...")
             try: driver.quit()
             except: pass
             time.sleep(10)
 
-
-# ==========================================
-# 🌐 ROTA DA SUA NOVA API
-# ==========================================
 @app.route('/api_bacbo', methods=['GET'])
 def get_api_bacbo():
     return jsonify(historico_global)
@@ -378,6 +343,5 @@ def health_check():
 if __name__ == '__main__':
     thread_raspagem = threading.Thread(target=motor_raspagem_24h, daemon=True)
     thread_raspagem.start()
-    
     porta = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=porta)
