@@ -241,7 +241,7 @@ def motor_raspagem_24h():
     
     while True:
         try:
-            driver = Driver(uc=True, headless2=True)
+            driver = Driver(uc=True, headless=True) # Alterado para headless=True (o Render usa Linux sem interface)
             
             login_esportiva_bet(driver)
             
